@@ -15,67 +15,56 @@ Developer documentation:
     The controller (I assume Don is referring to the controller attached to the
     control console and not the scope) turns off occasionally, so don't expect
     to always see data on that channel.
+
+    URL design information:
+    GET /scope -> server sends a response containing scope history
+    PUT /scope -> update scope parameters
+
+    Scope output:
+    A sample is started with "S G\r\n"
+    When the sample is complete, the score will respond with "A HI LO" with A
+    signally that the sample is complete, and HI and LO forming a 10-bit address
+    of the sample in the scope's buffer.
+
+    The buffer can be accessed with "S B\r\n"
+    The scope will respond with the entire scope memory (4KB) and one additional
+    byte (packet is preceded by 'D'). The buffer format returned is A1a1B1b1C1c1
+    where A1 and a1 make the first 10-bit sample value, B1 and b1 make the
+    second 10-bit sample value, and so on.
+
+    Application organization:
+    Communication with the tablet display should be done through a web service.
+    This will be easiest to implement on the tablet, and easiest to port to a
+    web application if need be.
+
+    Communication with the scope should be done in a separate process, as either
+    application crashing should not kill the other. To start, the scope
+    communication process can simply POST (or PUT, whatever) data to the web
+    service. Depending on performance, we may need to switch to something like
+    shared memory instead.
+
+    Communication with the controls should follow a similar paradigm. A separate
+    process can post to the web service whenever control information needs to be
+    updated.
 """
 import sys
-import socket
 import datetime
-import timeit
 import math
 import time
 import serial
-import array
-import string
-import types
+
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/scope', methods=['GET'])
+def get_scope():
+    pass
 
 
-def get_local_ip_address(target):
-    """Returns the IP address of the local machine.
-
-    Method taken from
-    http://www.linux-support.com/cms/get-local-ip-address-with-python/
-    """
-    ipaddr = ''
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((target, 8000))
-        ipaddr = s.getsockname()[0]
-        s.close()
-    except:
-        pass
-
-    return ipaddr
-
-
-def init(ipaddr, port, serversocket=None):
-    """
-    Init: Creates server socket and binds to the host, creates log file
-    Arguments: Port to bind to
-    Returns: serversocket
-    """
-    if serversocket is None:
-            serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    else:
-            serversocket = serversocket
-    serversocket.bind((ipaddr, port))
-    log("L", "Serversocket bound to: " + ipaddr + ":" + str(port))
-    serversocket.listen(5)
-    return serversocket
-
-
-def receive_start(serversocket):
-    """
-    Defining receive_handler : Recieves connections and bytes and forks new
-    threads depending on what is recieved
-
-    Arguments: serversocket
-    Returns:
-    Notes: While loop that uses a server socket to receive connections and fork
-    new threads depending on what is recieved
-    """
-    while 1:
-        (clientsocket, address) = serversocket.accept()
-        log("L", "Client connected at: " + str(clientsocket.getpeername()))
-        ct = receive_handler(clientsocket)
+@app.route('/scope', methods=['PUT'])
+def put_scope():
+    pass
 
 
 def receive_handler(clientsocket):
@@ -150,37 +139,9 @@ def receive_data(clientsocket, buffer):
         msg = msg + data
 
 
-
-def log(type, message):
-    """
-    Log: Writes log messages to a timestamped file
-    Arguments: Error Type and Message
-    Returns:
-    """
-    with open("Server_log.txt", "a") as log_file:
-        log_file.write(str(datetime.datetime.now()) + " - " + type + ": " + message+ "\n")
-    print str(datetime.datetime.now()) + " - " + type + ": " + message + "\n"
-
 # Speedtest: Times how long it takes to receive 5Mb of data from a socket
 # Arguments: clientsocket
 # Returns:
-
-def itoa(n, base = 10):
-    if type (n) != types.IntType:
-        raise TypeError, 'First arg should be an integer'
-    if (type (base) != types.IntType) or (base <= 1):
-        raise TypeError, 'Second arg should be an integer greater than 1'
-    output = []
-    pos_n = abs (n)
-    while pos_n:
-        lowest_digit = pos_n % base
-        output.append (str (lowest_digit))
-        pos_n = (pos_n - lowest_digit) / base
-    output.reverse ()
-    if n < 0:
-        output.insert (0, '-')
-    return string.join (output, '')
-
 
 if __name__ == "__main__":
     # Initiate on port 15151
@@ -212,12 +173,5 @@ if __name__ == "__main__":
 
     out = [0] * 6000
     
-    print "Running"
-
-    # New Log File
-    with open("Server_log.txt", "a") as log_file:
-        log_file.write("\n\n\n" + str(datetime.datetime.now()) + " Python server started\n")
-    log("Debug", "Testing Logging")
-
     receive_start(serversocket)
 
