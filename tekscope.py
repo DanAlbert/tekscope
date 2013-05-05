@@ -17,8 +17,21 @@ Developer documentation:
     to always see data on that channel.
 
     URL design information:
-    GET /scope -> server sends a response containing scope history
     PUT /scope -> update scope parameters
+    PUT /controls -> update control panel information
+
+    For the actual scope data, we may need to use something like this:
+    http://www.w3.org/TR/streams-api/
+    http://www.w3.org/TR/mediacapture-streams/
+
+    Some docs on implementing streaming in the back end:
+    http://flask.pocoo.org/docs/patterns/streaming/
+
+    This might be useful for the front end:
+    https://github.com/flowersinthesand/portal
+
+    If we can't stream it, we may have to just open a socket and ditch the web
+    service model.
 
     Scope output:
     A sample is started with "S G\r\n"
@@ -47,19 +60,55 @@ Developer documentation:
     process can post to the web service whenever control information needs to be
     updated.
 """
+import json
+import random
+import signal
 import sys
-import datetime
-import math
+import threading
 import time
-import serial
 
-from flask import Flask
+from flask import Flask, Response
 
 app = Flask(__name__)
 
+
+SCOPE_DATA = []
+STOPPING = False
+
+
+class ScopeReadThread(threading.Thread):
+    def __init__(self):
+        super(ScopeReadThread_Stub, self).__init__()
+        self.stopped = True
+
+    def run(self):
+        global SCOPE_DATA
+
+        self.stopped = False
+        while not self.stopped:
+            SCOPE_DATA.append(random.randint(-5, 5))
+            time.sleep(1)
+    
+    def stop(self):
+        self.stopped = True
+
+
+def next_scope_data():
+    global SCOPE_DATA
+    data = SCOPE_DATA
+    SCOPE_DATA = []
+    return data
+
+
 @app.route('/scope', methods=['GET'])
 def get_scope():
-    pass
+    def stream_scope_data():
+        global STOPPING
+        while not STOPPING:
+            data = next_scope_data()
+            if data:
+                yield json.dumps(data)
+    return Response(stream_scope_data())
 
 
 @app.route('/scope', methods=['PUT'])
@@ -67,111 +116,22 @@ def put_scope():
     pass
 
 
-def receive_handler(clientsocket):
-    clientsocket.settimeout(500)
-    log("L", "Client socket timeout set to " + str(clientsocket.gettimeout()))
+if __name__ == '__main__':
+    scope_read_thread = ScopeReadThread()
 
-#        channel1data = [0] * 1200        # Create empty array ready to receive result
-#        channel2data = [0] * 1200        # Create empty array ready to receive result
+    def sigint_handler(signum, frame):
+        """Closes threads and kills streams on SIGINT.
 
-    j=0
-    channel1packet = "CHONE,1000,"
-    channel2packet = "CHTWO,1000,"
-    for i in range(0, 1027):
-        channel1data[i] = 100*math.sin(((i) * .01))
-        channel2data[i] = 50*math.sin(((i) *.05))
-        channel1packet = channel1packet + "%03.0f" % channel1data[i] + ","
-        channel2packet = channel2packet + "%03.0f" % channel2data[i] + ","
-        # Receive start bytes
-    channel1packet = channel1packet + "\n"
-    channel2packet = channel2packet + "\n"
-#        log("F", channel1packet)
-    out = [0] * 6000
-    while 1:
-        try:
-            while 1:
-                time.sleep(.05)
-                clientsocket.send(channel1packet)
-                time.sleep(.05)
-                clientsocket.send(channel2packet)
-                ser.write("S C 2 0" + '\r\n')
-                ser.write("S G" + '\r\n')
-                out = ser.read(3)
-                samples = ord(out[1]) * 256 + ord(out[2])
-                #print "Returned ending address of " + str(samples)
-                ser.write("S B" + '\r\n')
-                out = ser.read(1)
-                out = ser.read(4096)
-                if out != '':
-                    j = 4*(samples)+4
-                    for i in range(0, 1023):
-                        j = j % 4096
-                        channel1data[(i)] = ord(out[j]) * 256 + ord(out[(j+1)% 4096])
-                        channel2data[(i)] = ord(out[(j+2)% 4096]) * 256 + ord(out[(j+3)% 4096])
-                        j = (j + 4)
-                channel1packet = "CHONE,1024,7,"
-                channel2packet = "CHTWO,1024,7,"
-                for i in range(0, 1027):
-                    channel1packet = channel1packet + "%03.0f" % ((511-channel1data[i])) + ","
-                    channel2packet = channel2packet + "%03.0f" % ((511-channel2data[i])) + ","
-                channel1packet = channel1packet + "\n"
-                channel2packet = channel2packet + "\n"        
-        except:
-            log("E", "Could not send data!")
-            break
-    try:
-        clientsocket.close();
-    except:
-        log("E", "Client Closed Socket?")
-                
+        TODO: For some reason SIGINT needs to be raised twice. Once for the
+              active stream, once for the application.
+        """
+        global STOPPING
+        print '\rCaught SIGINT, quitting'
+        scope_read_thread.stop()
+        STOPPING = True
+        time.sleep(1)
+        sys.exit(signum)
 
-def receive_data(clientsocket, buffer):
-    """
-    Receive_data: Receives a specified amount of data
-    Arguments: clientsocket, buffersize
-    Returns: 
-    """
-    msg = ''
-    while len(msg) < buffer:
-        data = clientsocket.recv(buffer - len(msg))
-        if data == '':
-            raise RuntimeError("No data received, or socket connection broken")
-        msg = msg + data
-
-
-# Speedtest: Times how long it takes to receive 5Mb of data from a socket
-# Arguments: clientsocket
-# Returns:
-
-if __name__ == "__main__":
-    # Initiate on port 15151
-    serversocket = init(get_local_ip_address("google.com"), 15151)
-    # configure the serial connections (the parameters differs on the device you are connecting to)
-    ser = serial.Serial(
-        port="COM122",
-        baudrate=230400,
-        parity=serial.PARITY_NONE,
-        stopbits=serial.STOPBITS_ONE,
-        bytesize=serial.EIGHTBITS,
-        timeout = 10,
-        rtscts=True
-        )
-
-    ser.close()
-    ser.open()
-    ser.isOpen()
-    
-    channel1data = [0] * 1100        # Create empty array ready to receive result
-    channel2data = [0] * 1100        # Create empty array ready to receive result
-     
-    ser.write("W A 128" + '\r\n')# + str(128) + '\r\n')
-    ser.write("W F 0 0 42 241" + '\r\n')# + str(0) + " " + str(0) + " " + str(42) + " " + str(241) + '\r\n')
-    ser.write("S R " + str(0b00000111) + '\r\n') #Sets Sample rate to 20MSamp/s / 2^7 = 156uS
-    ser.write("S P A" + '\r\n') #Sets channel A to Big preamp
-    ser.write("S P B" + '\r\n') #Sets channel B to Big preamp
-    
-
-    out = [0] * 6000
-    
-    receive_start(serversocket)
-
+    scope_read_thread.start()
+    signal.signal(signal.SIGINT, sigint_handler)
+    app.run(host='0.0.0.0')
