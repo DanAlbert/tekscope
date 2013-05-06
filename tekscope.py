@@ -61,43 +61,22 @@ Developer documentation:
     updated.
 """
 import json
-import random
 import signal
 import sys
-import threading
 import time
 
 from flask import Flask, Response
-
 app = Flask(__name__)
 
+from scope import Scope
 
-SCOPE_DATA = []
+SCOPE = Scope()
 STOPPING = False
 
 
-class ScopeReadThread(threading.Thread):
-    def __init__(self):
-        super(ScopeReadThread_Stub, self).__init__()
-        self.stopped = True
-
-    def run(self):
-        global SCOPE_DATA
-
-        self.stopped = False
-        while not self.stopped:
-            SCOPE_DATA.append(random.randint(-5, 5))
-            time.sleep(1)
-    
-    def stop(self):
-        self.stopped = True
-
-
 def next_scope_data():
-    global SCOPE_DATA
-    data = SCOPE_DATA
-    SCOPE_DATA = []
-    return data
+    global SCOPE
+    return SCOPE.get_data()
 
 
 @app.route('/scope', methods=['GET'])
@@ -117,21 +96,20 @@ def put_scope():
 
 
 if __name__ == '__main__':
-    scope_read_thread = ScopeReadThread()
-
     def sigint_handler(signum, frame):
         """Closes threads and kills streams on SIGINT.
 
         TODO: For some reason SIGINT needs to be raised twice. Once for the
               active stream, once for the application.
         """
+        global SCOPE
         global STOPPING
         print '\rCaught SIGINT, quitting'
-        scope_read_thread.stop()
+        SCOPE.read_thread.stop()
         STOPPING = True
         time.sleep(1)
         sys.exit(signum)
 
-    scope_read_thread.start()
+    SCOPE.read_thread.start()
     signal.signal(signal.SIGINT, sigint_handler)
     app.run(host='0.0.0.0')
