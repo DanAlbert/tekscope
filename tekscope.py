@@ -95,7 +95,7 @@ def main():
     scope = Scope(serial_port)
     scope.set_big_preamp(Scope.CHANNEL_A)
     scope.set_big_preamp(Scope.CHANNEL_B)
-    scope.set_sample_rate(20000000)
+    scope.set_sample_rate_divisor(0x7)
     scope_read_thread = ScopeReadThread(scope, data_sender)
 
     def stop_server_and_exit(signum, frame):

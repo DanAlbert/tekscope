@@ -41,14 +41,14 @@ class Serial(object):
         return data
 
     def write(self, data):
-        rate_cmd = re.search('^S R (\\d+)\r\n$', data)
+        rate_cmd = re.search('^S R (.)\r\n$', data)
         preamp_cmd = re.search('^S P ([AB])\r\n$', data)
         sample_cmd = re.search('^S G\r\n$', data)
         read_mem_cmd = re.search('^S B\r\n$', data)
         if rate_cmd:
-            n = int(rate_cmd.group(1))
+            n = ord(rate_cmd.group(1))
             if n & ~(0xf):
-                raise RuntimeError('Invalid rate %d' % n)
+                raise RuntimeError('Invalid divisor %d' % n)
             rate = 20000000.0 / (2 ** n)
             self.sample_period = 1 / rate
         elif preamp_cmd:

@@ -77,12 +77,11 @@ class Scope(object):
     def set_big_preamp(self, channel):
         self.com.write("S P %s\r\n" % channel)
 
-    def set_sample_rate(self, rate):
-        if rate == 20000000:
-            #Sets Sample rate to 20MSamp/s / 2^7 = 156uS
-            self.com.write("S R %s\r\n" % str(0b00000000))
+    def set_sample_rate_divisor(self, divisor):
+        if divisor & ~0xf:
+            raise RuntimeError('Invalid sample rate divisor %d' % divisor)
         else:
-            raise NotImplementedError()
+            self.com.write("S R %s\r\n" % chr(divisor))
 
 
 class ScopeReadThread(threading.Thread):
