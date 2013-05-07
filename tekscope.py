@@ -9,29 +9,12 @@ Developer documentation:
     Button status is indicated by AD (for button A down)
     To turn on light A, send AO
 
-    The service needs to allow the scope front end to reconnect at any time
-    (since we are implementing this as a web service, that should be automatic).
+    The service needs to allow the scope front end to reconnect at any time.
+    Since we simply maintain a client list, this isn't a problem.
 
     The controller (I assume Don is referring to the controller attached to the
     control console and not the scope) turns off occasionally, so don't expect
     to always see data on that channel.
-
-    URL design information:
-    PUT /scope -> update scope parameters
-    PUT /controls -> update control panel information
-
-    For the actual scope data, we may need to use something like this:
-    http://www.w3.org/TR/streams-api/
-    http://www.w3.org/TR/mediacapture-streams/
-
-    Some docs on implementing streaming in the back end:
-    http://flask.pocoo.org/docs/patterns/streaming/
-
-    This might be useful for the front end:
-    https://github.com/flowersinthesand/portal
-
-    If we can't stream it, we may have to just open a socket and ditch the web
-    service model.
 
     Scope output:
     A sample is started with "S G\r\n"
@@ -46,15 +29,10 @@ Developer documentation:
     second 10-bit sample value, and so on.
 
     Application organization:
-    Communication with the tablet display should be done through a web service.
-    This will be easiest to implement on the tablet, and easiest to port to a
-    web application if need be.
 
     Communication with the scope should be done in a separate process, as either
-    application crashing should not kill the other. To start, the scope
-    communication process can simply POST (or PUT, whatever) data to the web
-    service. Depending on performance, we may need to switch to something like
-    shared memory instead.
+    application crashing should not kill the other. The scope process can
+    communicate with the service with a socket, a pipe or shared memory.
 
     Communication with the controls should follow a similar paradigm. A separate
     process can post to the web service whenever control information needs to be
@@ -62,54 +40,69 @@ Developer documentation:
 """
 import json
 import signal
-import sys
-import time
+from twisted.internet import reactor, protocol
 
-from flask import Flask, Response
-app = Flask(__name__)
-
-from scope import Scope
-
-SCOPE = Scope()
-STOPPING = False
+from scope import Scope, ScopeReadThread
 
 
-def next_scope_data():
-    global SCOPE
-    return SCOPE.get_data()
+class ScopeProtocol(protocol.Protocol):
+    def __init__(self, client_list):
+        self.client_list = client_list
+
+    def connectionMade(self):
+        self.client_list.add(self)
+
+    def connectionLost(self, reason):
+        self.client_list.remove(self)
+
+    def dataReceived(self, data):
+        pass  # TODO: process request
 
 
-@app.route('/scope', methods=['GET'])
-def get_scope():
-    def stream_scope_data():
-        global STOPPING
-        while not STOPPING:
-            data = next_scope_data()
-            if data:
-                yield json.dumps(data)
-    return Response(stream_scope_data())
+class ScopeFactory(protocol.Factory):
+    def __init__(self, client_list):
+        self.client_list = client_list
+
+    def buildProtocol(self, addr):
+        return ScopeProtocol(self.client_list)
 
 
-@app.route('/scope', methods=['PUT'])
-def put_scope():
-    pass
+class ScopeDataSender(object):
+    def __init__(self, client_list):
+        self.client_list = client_list
+
+    def append(self, data):
+        for client in self.client_list:
+            client.transport.write(json.dumps(data))
 
 
-if __name__ == '__main__':
-    def sigint_handler(signum, frame):
-        """Closes threads and kills streams on SIGINT.
+def main():
+    port = 5000
+    client_list = set()
 
-        TODO: For some reason SIGINT needs to be raised twice. Once for the
-              active stream, once for the application.
-        """
-        global SCOPE
-        global STOPPING
-        print '\rCaught SIGINT, quitting'
-        SCOPE.read_thread.stop()
-        STOPPING = True
-        time.sleep(1)
-        sys.exit(signum)
+    data_sender = ScopeDataSender(client_list)
+    scope = Scope()
+    scope.set_big_preamp(Scope.CHANNEL_A)
+    scope.set_big_preamp(Scope.CHANNEL_B)
+    scope.set_sample_rate(20000000)
+    scope_read_thread = ScopeReadThread(scope, data_sender)
 
-    SCOPE.read_thread.start()
-    signal.signal(signal.SIGINT, sigint_handler)
-    app.run(host='0.0.0.0')
+    def stop_server_and_exit(signum, frame):
+        print '\rStopping server'
+        scope_read_thread.stop()
+        scope_read_thread.join()
+        reactor.stop()
+
+    def status_message(msg):
+        print msg
+
+    signal.signal(signal.SIGINT, stop_server_and_exit)
+    scope_read_thread.start()
+
+    reactor.listenTCP(port, ScopeFactory(client_list))
+    reactor.callWhenRunning(status_message, 'Server started on port %d' % port)
+    reactor.run()
+
+
+if __name__ == "__main__":
+    main()
