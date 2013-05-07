@@ -38,10 +38,11 @@ Developer documentation:
     process can post to the web service whenever control information needs to be
     updated.
 """
+import json
 import signal
 from twisted.internet import reactor, protocol
 
-import scope
+from scope import Scope, ScopeReadThread
 
 
 class ScopeProtocol(protocol.Protocol):
@@ -66,13 +67,13 @@ class ScopeFactory(protocol.Factory):
         return ScopeProtocol(self.client_list)
 
 
-class ScopeDataSender():
+class ScopeDataSender(object):
     def __init__(self, client_list):
         self.client_list = client_list
 
     def append(self, data):
         for client in self.client_list:
-            client.transport.write(str(data))
+            client.transport.write(json.dumps(data))
 
 
 def main():
@@ -80,19 +81,23 @@ def main():
     client_list = set()
 
     data_sender = ScopeDataSender(client_list)
-    scope_thread = scope.ScopeThread(data_sender)
+    scope = Scope()
+    scope.set_big_preamp(Scope.CHANNEL_A)
+    scope.set_big_preamp(Scope.CHANNEL_B)
+    scope.set_sample_rate(20000000)
+    scope_read_thread = ScopeReadThread(scope, data_sender)
 
     def stop_server_and_exit(signum, frame):
         print '\rStopping server'
-        scope_thread.stop()
-        scope_thread.join()
+        scope_read_thread.stop()
+        scope_read_thread.join()
         reactor.stop()
 
     def status_message(msg):
         print msg
 
     signal.signal(signal.SIGINT, stop_server_and_exit)
-    scope_thread.start()
+    scope_read_thread.start()
 
     reactor.listenTCP(port, ScopeFactory(client_list))
     reactor.callWhenRunning(status_message, 'Server started on port %d' % port)
