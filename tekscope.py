@@ -40,6 +40,7 @@ Developer documentation:
 """
 import json
 import signal
+import sys
 from twisted.internet import reactor, protocol
 
 from scope import Scope, ScopeReadThread
@@ -77,11 +78,21 @@ class ScopeDataSender(object):
 
 
 def main():
-    port = 5000
+    server_port = 5000
     client_list = set()
 
+    argc = len(sys.argv)
+    if argc < 2 or argc > 3:
+        usage()
+        sys.exit(-1)
+
+    serial_port = sys.argv[1]
+
+    if argc == 3:
+        server_port = int(sys.argv[2])
+
     data_sender = ScopeDataSender(client_list)
-    scope = Scope()
+    scope = Scope(serial_port)
     scope.set_big_preamp(Scope.CHANNEL_A)
     scope.set_big_preamp(Scope.CHANNEL_B)
     scope.set_sample_rate(20000000)
@@ -99,9 +110,14 @@ def main():
     signal.signal(signal.SIGINT, stop_server_and_exit)
     scope_read_thread.start()
 
-    reactor.listenTCP(port, ScopeFactory(client_list))
-    reactor.callWhenRunning(status_message, 'Server started on port %d' % port)
+    reactor.listenTCP(server_port, ScopeFactory(client_list))
+    reactor.callWhenRunning(
+            status_message, 'Server started on port %d' % server_port)
     reactor.run()
+
+
+def usage():
+    print 'usage: python tekscope.py SERIAL_PORT [SERVER_PORT]'
 
 
 if __name__ == "__main__":

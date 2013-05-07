@@ -6,9 +6,9 @@ class Scope(object):
     CHANNEL_A = 'A'
     CHANNEL_B = 'B'
 
-    def __init__(self):
+    def __init__(self, port):
         self.com = serial.Serial(
-                port="COM122",
+                port=port,
                 baudrate=230400,
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
