@@ -51,6 +51,7 @@ class ScopeProtocol(protocol.Protocol):
         self.client_list = client_list
 
     def connectionMade(self):
+        print "connection from: %s" % self.transport.getPeer()
         self.client_list.add(self)
 
     def connectionLost(self, reason):

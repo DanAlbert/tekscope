@@ -1,4 +1,4 @@
-import mockserial as serial
+import serial
 import threading
 
 
@@ -13,7 +13,7 @@ class Scope(object):
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
                 bytesize=serial.EIGHTBITS,
-                timeout = 10,
+                timeout = None,
                 rtscts=True)
 
     def start(self):
@@ -22,11 +22,15 @@ class Scope(object):
     def stop(self):
         self.com.close()
 
+    def command(self, cmd):
+        self.com.write('%s\r\n' % cmd)
+
     def handle_message(self, msg):
-        raise NotImplementedError('Unhandled message %s' % msg)
+        hex_msg = ["%x" % ord(c) for c in msg]
+        raise NotImplementedError('Unhandled message ', hex_msg)
 
     def begin_sample(self):
-        self.com.write("S G\r\n")
+        self.command("S G")
 
     def wait_for_sample(self):
         msg = self.com.read(3)
@@ -34,12 +38,12 @@ class Scope(object):
             self.handle_message(msg)
             msg = self.com.read(3)
         else:
-            upper = msg[1]
-            lower = msg[2]
+            upper = ord(msg[1])
+            lower = ord(msg[2])
             return 256 * upper + lower
     
     def read_memory(self):
-        self.com.write("S B\r\n")
+        self.command("S B")
         msg = self.com.read()
         while msg[0] != 'D':
             self.handle_message(msg)
@@ -53,10 +57,10 @@ class Scope(object):
         samples = end_addr / 4
         sample = { Scope.CHANNEL_A: [], Scope.CHANNEL_B: [] }
         for i in range(samples):
-            a_high = buf[i * 4]
-            a_low = buf[i * 4 + 1]
-            b_high = buf[i * 4 + 2]
-            b_low = buf[i * 4 + 3]
+            a_high = ord(buf[i * 4])
+            a_low = ord(buf[i * 4 + 1])
+            b_high = ord(buf[i * 4 + 2])
+            b_low = ord(buf[i * 4 + 3])
 
             a = 256 * a_high + a_low
             b = 256 * b_high + b_low
@@ -75,13 +79,15 @@ class Scope(object):
         return self.decode_sample(buf, end_addr)
 
     def set_big_preamp(self, channel):
-        self.com.write("S P %s\r\n" % channel)
+        self.command("S P %s" % channel)
 
     def set_sample_rate_divisor(self, divisor):
         if divisor & ~0xf:
             raise RuntimeError('Invalid sample rate divisor %d' % divisor)
         else:
-            self.com.write("S R %s\r\n" % chr(divisor))
+            # TODO: pretty sure this should be chr(), not str(), but chr()
+            #       fails...
+            self.command("S R %s" % str(divisor))
 
 
 class ScopeReadThread(threading.Thread):
