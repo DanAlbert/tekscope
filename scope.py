@@ -13,7 +13,7 @@ class Scope(object):
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
                 bytesize=serial.EIGHTBITS,
-                timeout = None,
+                timeout=None,
                 rtscts=True)
 
     def start(self):
@@ -41,7 +41,7 @@ class Scope(object):
             upper = ord(msg[1])
             lower = ord(msg[2])
             return 256 * upper + lower
-    
+
     def read_memory(self):
         self.command("S B")
         msg = self.com.read()
@@ -55,7 +55,7 @@ class Scope(object):
             raise RuntimeError('Invalid buffer size')
 
         samples = end_addr / 4
-        sample = { Scope.CHANNEL_A: [], Scope.CHANNEL_B: [] }
+        sample = {Scope.CHANNEL_A: [], Scope.CHANNEL_B: []}
         for i in range(samples):
             a_high = ord(buf[i * 4])
             a_low = ord(buf[i * 4 + 1])
@@ -108,12 +108,11 @@ class ScopeReadThread(threading.Thread):
     def stop(self):
         self.stopped = True
 
-    """
-    # configure the serial connections (the parameters differs on the device you are connecting to)
-    
-    channel1data = [0] * 1100        # Create empty array ready to receive result
-    channel2data = [0] * 1100        # Create empty array ready to receive result
-     
-    ser.write("W A 128" + '\r\n')# + str(128) + '\r\n')
-    ser.write("W F 0 0 42 241" + '\r\n')# + str(0) + " " + str(0) + " " + str(42) + " " + str(241) + '\r\n')
-    """
+# configure the serial connections (the parameters differs on the device you
+# are connecting to)
+
+#channel1data = [0] * 1100        # Create empty array ready to receive result
+#channel2data = [0] * 1100        # Create empty array ready to receive result
+
+#ser.write("W A 128" + '\r\n')# + str(128) + '\r\n')
+#ser.write("W F 0 0 42 241" + '\r\n')
