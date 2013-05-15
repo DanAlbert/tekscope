@@ -82,47 +82,45 @@ class ScopeDataSender(object):
 def make_control_panel(port):
     control_panel = ControlPanel(port=port)
 
-    def update_position(encoder, scope, control_panel):
+    def update_position(encoder):
+        print 'encoder %d: %d' % (encoder.control_id, encoder.value)
+
+    def update_scale(encoder):
+        print 'encoder %d: %d' % (encoder.control_id, encoder.value)
+
+    def no_action(encoder):
         pass
 
-    def update_scale(encoder, scope, control_panel):
-        pass
+    def toggle_led(switch):
+        print 'toggle led %s: %s' % (switch.control_id, str(switch.value))
+        if switch.value:
+            switch.control_panel.toggle_led(switch.control_id)
 
-    def no_action(encoder, scope, control_panel):
-        pass
+    control_panel.add_encoder(1, update_position)
+    control_panel.add_encoder(2, update_scale)
+    control_panel.add_encoder(3, update_position)
+    control_panel.add_encoder(4, update_scale)
+    control_panel.add_encoder(5, update_position)
+    control_panel.add_encoder(6, update_scale)
+    control_panel.add_encoder(7, no_action)
 
-    def toggle_led(switch, scope, control_panel):
-        control_panel.update_led(switch.control_id, switch.value)
+    control_panel.add_switch('A', toggle_led)
+    control_panel.add_switch('B', toggle_led)
+    control_panel.add_switch('C', toggle_led)
+    control_panel.add_switch('D', toggle_led)
+    control_panel.add_switch('E', toggle_led)
+    control_panel.add_switch('G', no_action)
+    control_panel.add_switch('H', no_action)
+    control_panel.add_switch('I', no_action)
+    control_panel.add_switch('J', no_action)
+    control_panel.add_switch('P', toggle_led)
 
-    control_panel.add_encoder(Encoder(1, update_position))
-    control_panel.add_encoder(Encoder(2, update_scale))
-    control_panel.add_encoder(Encoder(3, update_position))
-    control_panel.add_encoder(Encoder(4, update_scale))
-    control_panel.add_encoder(Encoder(5, update_position))
-    control_panel.add_encoder(Encoder(6, update_scale))
-    control_panel.add_encoder(Encoder(7, no_action))
-
-    control_panel.add_switch(Switch('A', toggle_led))
-    control_panel.add_switch(Switch('B', toggle_led))
-    control_panel.add_switch(Switch('C', toggle_led))
-    control_panel.add_switch(Switch('D', toggle_led))
-    control_panel.add_switch(Switch('E', toggle_led))
-    control_panel.add_switch(Switch('G', toggle_led))
-    control_panel.add_switch(Switch('H', toggle_led))
-    control_panel.add_switch(Switch('I', toggle_led))
-    control_panel.add_switch(Switch('J', toggle_led))
-    control_panel.add_switch(Switch('P', toggle_led))
-
-    control_panel.add_led(Led('A'))
-    control_panel.add_led(Led('B'))
-    control_panel.add_led(Led('C'))
-    control_panel.add_led(Led('D'))
-    control_panel.add_led(Led('E'))
-    control_panel.add_led(Led('G'))
-    control_panel.add_led(Led('H'))
-    control_panel.add_led(Led('I'))
-    control_panel.add_led(Led('J'))
-    control_panel.add_led(Led('P'))
+    control_panel.add_led('A')
+    control_panel.add_led('B')
+    control_panel.add_led('C')
+    control_panel.add_led('D')
+    control_panel.add_led('E')
+    control_panel.add_led('P')
 
     return control_panel
 
@@ -156,8 +154,10 @@ def main():
         print '\rStopping server'
         scope_read_thread.stop()
         control_panel_thread.stop()
-        scope_read_thread.join()
+        print 'Joining control panel thread...'
         control_panel_thread.join()
+        print 'Joining scope read thread...'
+        scope_read_thread.join()
         reactor.stop()
 
     def status_message(msg):

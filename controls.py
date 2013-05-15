@@ -9,66 +9,79 @@ class Control(object):
 
 
 class Encoder(Control):
-    def __init__(self, update_callback):
-        super(Encoder, self).__init__(update_callback)
+    def __init__(self, control_id, update_callback, control_panel):
+        super(Encoder, self).__init__(control_id, update_callback)
+        self.control_panel = control_panel
         self.value = 0
 
     def update(self, modifier):
         self.value += modifier
-        self.update_callback(self.value)
+        self.update_callback(self)
 
 
 class Switch(Control):
-    def __init__(self, update_callback):
-        super(Switch, self).__init__(update_callback)
+    def __init__(self, control_id, update_callback, control_panel):
+        super(Switch, self).__init__(control_id, update_callback)
+        self.control_panel = control_panel
         self.value = False
 
     def update(self, state):
         self.value = state
-        self.update_callback(self.value)
+        self.update_callback(self)
 
 
 class Led(object):
-    def __init__(self, com, control_id):
+    def __init__(self, control_id, com):
         self.com = com
         self.control_id = control_id
+        self.value = False
 
     def update(self, value):
-        self.com.write('%s%d' % (str(self.control_id), int(value)))
+        self.value = value
+        self.com.write('%s%d' % (str(self.control_id), int(self.value)))
 
 
 class ControlPanel(object):
-    BAUD_RATE = 115200
+    BAUD_RATE = 9600
 
     def __init__(self, port):
         self.com = serial.Serial(
                 port=port,
-                baud=ControlPanel.BAUD_RATE,
-                timeout=None)
+                baudrate=ControlPanel.BAUD_RATE,
+                timeout=0.2)
         self.encoders = {}
         self.switches = {}
         self.leds = {}
 
-    def add_encoder(self, encoder):
+    def stop(self):
+        self.com.close()
+
+    def add_encoder(self, encoder_id, encoder_callback):
+        encoder = Encoder(encoder_id, encoder_callback, self)
         if encoder.control_id in self.encoders:
             raise RuntimeError(
                     'Encoder %s was already added to the control panel' %
                     str(encoder.control_id))
         self.encoders[encoder.control_id] = encoder
 
-    def add_switch(self, switch):
+    def add_switch(self, switch_id, switch_callback):
+        switch = Switch(switch_id, switch_callback, self)
         if switch.control_id in self.switches:
             raise RuntimeError(
                     'Switch %s was already added to the control panel' %
                     str(switch.control_id))
         self.switches[switch.control_id] = switch
 
-    def add_led(self, led):
+    def add_led(self, led_id):
+        led = Led(led_id, self.com)
         if led.control_id in self.leds:
             raise RuntimeError(
                     'LED %s was already added to the control panel' %
                     str(led.control_id))
         self.leds[led.control_id] = led
+
+    def toggle_led(self, led_id):
+        self.update_led(led_id, not self.leds[led_id].value)
 
     def update_led(self, led_id, value):
         self.leds[led_id].update(value)
@@ -77,18 +90,22 @@ class ControlPanel(object):
         self.handle_message(self.com.read(2))
 
     def is_encoder_message(self, message):
-        return message[0].isdigit() and message.length() == 2
+        return message[0].isdigit() and len(message) == 2
 
     def is_switch_message(self, message):
-        return message[0].isupper() and message.length() == 2
+        return message[0].isupper() and len(message) == 2
 
     def handle_message(self, message):
-        if self.is_encoder_message(message):
+        if len(message) == 0:
+            pass  # timed out
+        elif self.is_encoder_message(message):
             self.handle_encoder(message)
         elif self.is_switch_message(message):
             self.handle_switch(message)
         else:
-            raise NotImplementedError('unhandled message %s' % message)
+            vals = [str(ord(c)) for c in message]
+            hex_message = ' '.join(vals)
+            raise NotImplementedError('unhandled message %s' % hex_message)
 
     def handle_encoder(self, message):
         encoder_id = int(message[0])
@@ -135,3 +152,4 @@ class ControlPanelThread(threading.Thread):
 
     def stop(self):
         self.stopped = True
+        self.control_panel.stop()
