@@ -9,10 +9,10 @@ class Control(object):
 
 
 class Encoder(Control):
-    def __init__(self, control_id, update_callback, control_panel):
+    def __init__(self, control_id, update_callback, value=0):
         super(Encoder, self).__init__(control_id, update_callback)
-        self.control_panel = control_panel
         self.value = 0
+        self.update(value)
 
     def update(self, modifier):
         self.value += modifier
@@ -20,10 +20,9 @@ class Encoder(Control):
 
 
 class Switch(Control):
-    def __init__(self, control_id, update_callback, control_panel):
+    def __init__(self, control_id, update_callback, value=False):
         super(Switch, self).__init__(control_id, update_callback)
-        self.control_panel = control_panel
-        self.value = False
+        self.update(value)
 
     def update(self, state):
         self.value = state
@@ -31,10 +30,10 @@ class Switch(Control):
 
 
 class Led(object):
-    def __init__(self, control_id, com):
+    def __init__(self, control_id, com, value=False):
         self.com = com
         self.control_id = control_id
-        self.value = False
+        self.update(value)
 
     def update(self, value):
         self.value = value
@@ -48,6 +47,9 @@ class ControlPanel(object):
         self.com = serial.Serial(
                 port=port,
                 baudrate=ControlPanel.BAUD_RATE,
+                #parity=serial.PARITY_NONE,
+                #bytesize=serial.EIGHTBITS,
+                #stopbits=serial.STOPBITS_ONE,
                 timeout=0.2)
         self.encoders = {}
         self.switches = {}
@@ -56,24 +58,24 @@ class ControlPanel(object):
     def stop(self):
         self.com.close()
 
-    def add_encoder(self, encoder_id, encoder_callback):
-        encoder = Encoder(encoder_id, encoder_callback, self)
+    def add_encoder(self, encoder_id, update_callback, value=0):
+        encoder = Encoder(encoder_id, update_callback, value)
         if encoder.control_id in self.encoders:
             raise RuntimeError(
                     'Encoder %s was already added to the control panel' %
                     str(encoder.control_id))
         self.encoders[encoder.control_id] = encoder
 
-    def add_switch(self, switch_id, switch_callback):
-        switch = Switch(switch_id, switch_callback, self)
+    def add_switch(self, switch_id, update_callback, value=False):
+        switch = Switch(switch_id, update_callback, value)
         if switch.control_id in self.switches:
             raise RuntimeError(
                     'Switch %s was already added to the control panel' %
                     str(switch.control_id))
         self.switches[switch.control_id] = switch
 
-    def add_led(self, led_id):
-        led = Led(led_id, self.com)
+    def add_led(self, led_id, value=False):
+        led = Led(led_id, self.com, value)
         if led.control_id in self.leds:
             raise RuntimeError(
                     'LED %s was already added to the control panel' %

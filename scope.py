@@ -2,9 +2,25 @@ import serial
 import threading
 
 
+def low_byte(short):
+    return short & 0xff
+
+
+def high_byte(short):
+    return low_byte(short >> 8)
+
+
+def split_bytes(short):
+    return (high_byte(short), low_byte(short))
+
+
 class Scope(object):
     CHANNEL_A = 'A'
     CHANNEL_B = 'B'
+    EXTERNAL = 'EXT'
+
+    RISING_EDGE = 0
+    FALLING_EDGE = 1
 
     def __init__(self, port):
         self.com = serial.Serial(
@@ -16,11 +32,31 @@ class Scope(object):
                 timeout=None,
                 rtscts=True)
 
-    def start(self):
-        self.com.open()
+        self.gain = 1  # TODO: this can change, but it isn't clear how...
+        self.trigger_channel = Scope.CHANNEL_A
+        self.trigger_edge = Scope.RISING_EDGE
 
-    def stop(self):
-        self.com.close()
+        self.set_sample_rate_divisor(0)
+        self.set_preamp(Scope.CHANNEL_A, high=True)
+        self.set_preamp(Scope.CHANNEL_B, high=True)
+        self.set_trigger_level(0.0)
+        self.set_trigger_type(edge=Scope.RISING_EDGE, channel=Scope.CHANNEL_A)
+
+    @property
+    def sample_rate(self):
+        return 20000000.0 / (2 ** self.sample_rate_divisor)
+
+    @property
+    def control_register(self):
+        reg = self.sample_rate_divisor
+        if self.trigger_channel == Scope.CHANNEL_B:
+            reg |= 1 << 4
+        elif self.trigger_channel == Scope.EXTERNAL:
+            reg |= 1 << 6
+
+        if self.trigger_edge == Scope.RISING_EDGE:
+            reg |= 1 << 5
+        return reg
 
     def command(self, cmd):
         self.com.write('%s\r\n' % cmd)
@@ -54,18 +90,20 @@ class Scope(object):
         if len(buf) != 4096:
             raise RuntimeError('Invalid buffer size')
 
-        samples = end_addr / 4
         sample = {Scope.CHANNEL_A: [], Scope.CHANNEL_B: []}
-        for i in range(samples):
-            a_high = ord(buf[i * 4])
-            a_low = ord(buf[i * 4 + 1])
-            b_high = ord(buf[i * 4 + 2])
-            b_low = ord(buf[i * 4 + 3])
+        for i in range(1024):
+            index = ((i + end_addr) * 4) + 4
+            a_high = ord(buf[index % 4096])
+            a_low = ord(buf[(index + 1) % 4096])
+            b_high = ord(buf[(index + 2) % 4096])
+            b_low = ord(buf[(index + 3) % 4096])
 
             a = 256 * a_high + a_low
             b = 256 * b_high + b_low
-            sample[Scope.CHANNEL_A].append(a)
-            sample[Scope.CHANNEL_B].append(b)
+            a_voltage = (511 - a) * self.ad_step_size
+            b_voltage = (511 - b) * self.ad_step_size
+            sample[Scope.CHANNEL_A].append(round(a_voltage, 2))
+            sample[Scope.CHANNEL_B].append(round(b_voltage, 2))
         return sample
 
     def get_sample(self):
@@ -78,16 +116,31 @@ class Scope(object):
         buf = self.read_memory()
         return self.decode_sample(buf, end_addr)
 
-    def set_big_preamp(self, channel):
-        self.command("S P %s" % channel)
+    def set_preamp(self, channel, high):
+        if high:
+            self.ad_step_size = 0.0521
+            self.command("S P %s" % channel.upper())
+        else:
+            self.ad_step_size = 0.00592
+            self.command("S P %s" % channel.lower())
 
     def set_sample_rate_divisor(self, divisor):
         if divisor & ~0xf:
             raise RuntimeError('Invalid sample rate divisor %d' % divisor)
         else:
-            # TODO: pretty sure this should be chr(), not str(), but chr()
-            #       fails...
-            self.command("S R %s" % str(divisor))
+            self.sample_rate_divisor = divisor
+            self.command("S R %d" % self.control_register)
+
+    def set_trigger_type(self, edge, channel):
+        self.trigger_edge = edge
+        self.trigger_channel = channel
+        self.command("S R %d" % self.control_register)
+
+    def set_trigger_level(self, voltage):
+        self.trigger_level = voltage
+        value = int(511 - self.gain * self.trigger_level / 0.52421484375)
+        (high_byte, low_byte) = split_bytes(value)
+        self.command("S T %d %d" % (high_byte, low_byte))
 
 
 class ScopeReadThread(threading.Thread):
@@ -100,19 +153,8 @@ class ScopeReadThread(threading.Thread):
 
     def run(self):
         self.stopped = False
-        self.scope.start()
         while not self.stopped:
             self.scope_data.append(self.scope.get_sample())
-        self.scope.stop()
 
     def stop(self):
         self.stopped = True
-
-# configure the serial connections (the parameters differs on the device you
-# are connecting to)
-
-#channel1data = [0] * 1100        # Create empty array ready to receive result
-#channel2data = [0] * 1100        # Create empty array ready to receive result
-
-#ser.write("W A 128" + '\r\n')# + str(128) + '\r\n')
-#ser.write("W F 0 0 42 241" + '\r\n')
